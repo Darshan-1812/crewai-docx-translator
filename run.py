@@ -9,7 +9,7 @@ from pathlib import Path
 from src.docx_preserve import extract_text_units, replace_text_in_document
 
 
-API_KEY = "AIzaSyAoiINUaIRTpBlcIIQZSdMsw7_VXa6S1c8"
+API_KEY = "google_api_key"
 
 if not API_KEY:
     raise ValueError("GOOGLE_API_KEY not found. Please set it in your .env file.")
