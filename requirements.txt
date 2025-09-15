@@ -33,7 +33,7 @@ filetype==1.2.0
 flatbuffers==25.2.10
 frozenlist==1.7.0
 fsspec==2025.9.0
-google-ai-generativelanguage==0.6.18
+google-ai-generativelanguage==0.6.15
 google-api-core==2.25.1
 google-api-python-client==2.181.0
 google-auth==2.40.3
@@ -70,10 +70,9 @@ jsonschema-specifications==2025.9.1
 kubernetes==33.1.0
 langchain==0.3.27
 langchain-core==0.3.75
-langchain-google-genai==2.1.10
 langchain-text-splitters==0.3.11
 langsmith==0.4.27
-litellm==1.37.11
+litellm==1.74.9
 lxml==6.0.1
 markdown-it-py==4.0.0
 MarkupSafe==3.0.2

@@ -1,15 +1,20 @@
 import os
 import yaml
-from dotenv import load_dotenv
 from crewai import Agent, Task, Crew, Process
 from docx import Document
 import google.generativeai as genai
 import logging
+import time
+import random
 from pathlib import Path
-from src.docx_preserve import extract_text_units, replace_text_in_document
+from src.docx_preserve import (
+    extract_text_units, replace_text_in_document, 
+    calculate_optimal_batch_size, estimate_tokens, 
+    TokenStats, log_token_stats
+)
 
 
-API_KEY = "google_api_key"
+API_KEY = "AIzaSyAoiINUaIRTpBlcIIQZSdMsw7_VXa6S1c8"
 
 if not API_KEY:
     raise ValueError("GOOGLE_API_KEY not found. Please set it in your .env file.")
@@ -125,12 +130,22 @@ def run_crew():
     # Identification task (context / prompt priming)
     task_identify = tasks.identify_task(identification_agent, document_content)
 
-    # Batch translate units to control tokens
-    batch_size = 40
+    # Calculate optimal batch size based on token limits
+    max_tokens_per_batch = config['llm'].get('max_tokens_per_batch', 2000)
+    batch_size = calculate_optimal_batch_size(units, max_tokens_per_batch)
+    logging.info(f"Calculated optimal batch size: {batch_size} units")
+    
     translated_map = []
+    total_batches = (len(units) + batch_size - 1) // batch_size
+    total_stats = TokenStats()
+    
     for i in range(0, len(units), batch_size):
         batch = units[i:i+batch_size]
         batch_text = "\n\n--- UNIT BREAK ---\n\n".join(u.text for u in batch)
+        
+        # Calculate input tokens for this batch
+        input_tokens = estimate_tokens(batch_text)
+        
         task_translate = tasks.translate_task(translator_agent, batch_text, target_language)
         task_translate.context = [task_identify]
         crew = Crew(
@@ -139,8 +154,45 @@ def run_crew():
             process=Process.sequential,
             verbose=False
         )
-        logging.info("Translating units %d-%d", i+1, min(i+batch_size, len(units)))
-        translated_block = str(crew.kickoff())
+        
+        batch_num = (i // batch_size) + 1
+        logging.info(f"Translating batch {batch_num}/{total_batches} (units {i+1}-{min(i+batch_size, len(units))})")
+
+        # Retry on transient provider errors (e.g., 503 overload)
+        max_retries = 5
+        attempt = 0
+        translated_block = None
+        batch_stats = TokenStats()
+        
+        while attempt < max_retries:
+            try:
+                translated_block = str(crew.kickoff())
+                
+                # Calculate output tokens and update stats
+                output_tokens = estimate_tokens(translated_block)
+                batch_stats.input_tokens = input_tokens
+                batch_stats.output_tokens = output_tokens
+                batch_stats.total_cost = (input_tokens + output_tokens) * 0.00001  # Rough cost estimate
+                
+                # Log batch statistics
+                log_token_stats(batch_stats, batch_num, total_batches)
+                
+                # Update total stats
+                total_stats.input_tokens += input_tokens
+                total_stats.output_tokens += output_tokens
+                total_stats.total_cost += batch_stats.total_cost
+                
+                break
+            except Exception as e:
+                attempt += 1
+                if attempt >= max_retries:
+                    raise
+                backoff_seconds = min(30, (2 ** attempt) + random.uniform(0, 1))
+                logging.warning(
+                    "Translation batch failed (attempt %d/%d): %s. Retrying in %.1fs",
+                    attempt, max_retries, e, backoff_seconds,
+                )
+                time.sleep(backoff_seconds)
         parts = [p.strip() for p in translated_block.split("--- UNIT BREAK ---")]
         if len(parts) != len(batch):
             # Fallback: try naive split by double newline
@@ -150,6 +202,10 @@ def run_crew():
             translated_text = parts[j] if j < len(parts) else translated_block
             translated_map.append((u, translated_text))
 
+    # Log final statistics
+    logging.info(f"Translation completed! Total stats - Input: {total_stats.input_tokens} tokens, "
+                f"Output: {total_stats.output_tokens} tokens, Total cost: ${total_stats.total_cost:.4f}")
+    
     # Replace text in a copy of the source doc to preserve layout/images
     out_doc = replace_text_in_document(src_doc, translated_map)
     try:

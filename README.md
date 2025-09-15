@@ -33,11 +33,7 @@ python -m venv .venv
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 
-# 3) Add .env with your key
-# In project root create .env with:
-# GOOGLE_API_KEY=YOUR_KEY
-# GEMINI_API_KEY=YOUR_KEY
-```
+
 
 ## Configuration
 Edit `config.yaml`:

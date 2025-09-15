@@ -1,7 +1,8 @@
 translation:
-  target_language: "Hindi"
+  target_language: "Arabic"
 llm:
   model_name: "gemini/gemini-1.5-flash"
+  max_tokens_per_batch: 2000
 paths:
   input_file: "input_documents/academic_paper.docx"
   output_file: "output_documents/translated_paper.docx"
